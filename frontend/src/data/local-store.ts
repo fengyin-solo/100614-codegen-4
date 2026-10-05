@@ -54,6 +54,45 @@ export function resetRows(key: string): EntryRow[] {
   return rows
 }
 
+/** 取一份全量草稿：多表改动先在草稿上算完，再一次性提交。 */
+export function draftState(): Record<string, EntryRow[]> {
+  return clone(allRows())
+}
+
+/**
+ * 原子提交：整份状态一次写入。写不进去（如存储超限）就整体撤销，
+ * 内存缓存回滚到提交前，不落下一半的脏数据。
+ */
+export function saveAll(next: Record<string, EntryRow[]>): void {
+  const previous = cache
+  cache = next
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    }
+  } catch (error) {
+    cache = previous
+    throw error
+  }
+}
+
+/**
+ * 严格重读：绕开内存缓存，强制从 localStorage 重新解析。
+ * 读不到或解析失败直接抛错，由调用方重试——不拿缓存里的老数据兜底。
+ */
+export function reloadFromStorage(): Record<string, EntryRow[]> {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    throw new Error('当前环境没有本地存储，无法重新核对数据')
+  }
+  const raw = window.localStorage.getItem(STORAGE_KEY)
+  if (!raw) {
+    throw new Error('本地存储里还没有数据，无法重新核对')
+  }
+  const parsed = JSON.parse(raw) as Record<string, EntryRow[]>
+  cache = { ...clone(SEED_ROWS), ...parsed }
+  return cache
+}
+
 export function storageKey(): string {
   return STORAGE_KEY
 }

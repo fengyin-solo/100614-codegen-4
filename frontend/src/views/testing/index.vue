@@ -67,6 +67,61 @@
       <span>共 {{ total }} 条试验检测记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <section class="handover-panel">
+      <h3>竣工资料移交签收结论（与组卷、移交页同一份数据，{{ archiveBoard?.rulesVersion }}）</h3>
+      <p class="page-desc">
+        结论不在这里另存一份，直接从移交记录取；缺报告案卷的缺件数与组卷页读到的是同一份算法的结果。
+      </p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>移交编号</th><th>案卷列表</th><th>状态</th><th>结论</th><th>缺件卷（点名）</th><th>签收人 / 时间</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in handoverRows" :key="String(row['移交编号'])">
+            <td>{{ row['移交编号'] }}</td>
+            <td>{{ row['案卷列表'] }}</td>
+            <td>{{ row.status }}</td>
+            <td>{{ row['结论'] || '—' }}</td>
+            <td>
+              <span v-if="row['缺件卷']" class="missing-text">{{ row['缺件卷'] }}</span>
+              <span v-else>—</span>
+            </td>
+            <td>{{ row['签收人'] || '—' }} {{ row['签收时间'] || '' }}</td>
+          </tr>
+          <tr v-if="!handoverRows.length">
+            <td colspan="6" class="empty-state">还没有移交签收记录</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>缺报告案卷（试验报告类，按资料清单口径）</h4>
+      <form class="filter-bar" @submit.prevent>
+        <label class="filter-item">
+          <span>按案卷编号查</span>
+          <input v-model="reportQuery" placeholder="如 VOL-0002" />
+        </label>
+      </form>
+      <table class="data-table">
+        <thead>
+          <tr><th>案卷编号</th><th>案卷题名</th><th>单位工程</th><th>缺件数</th><th>缺项明细</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in filteredMissingReports" :key="item.code">
+            <td>{{ item.code }}</td>
+            <td>{{ item.title }}</td>
+            <td>{{ item.unit }}</td>
+            <td class="missing-text">缺 {{ item.missing.count }} 项</td>
+            <td>{{ item.missing.missing.join('、') }}</td>
+          </tr>
+          <tr v-if="!filteredMissingReports.length">
+            <td colspan="5" class="empty-state">没有缺报告的案卷</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
   </section>
 </template>
 
@@ -79,6 +134,7 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { loadArchiveState, type ArchiveBoard } from '@/api/archive-service'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('testing')
@@ -92,6 +148,15 @@ const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+// 竣工资料移交结论：与组卷页、移交页读同一份数据，两边只认一份
+const archiveBoard = ref<ArchiveBoard | null>(null)
+const reportQuery = ref('')
+const handoverRows = computed(() => archiveBoard.value?.handovers ?? [])
+const filteredMissingReports = computed(() => {
+  const list = archiveBoard.value?.missingReports ?? []
+  const query = reportQuery.value.trim()
+  return query ? list.filter((item) => item.code.includes(query)) : list
+})
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
@@ -128,6 +193,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    archiveBoard.value = loadArchiveState()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '试验检测列表读取失败'
   }
@@ -135,3 +201,16 @@ function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.handover-panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 16px;
+}
+.handover-panel h3 { margin: 4px 0 8px; font-size: 15px; }
+.handover-panel h4 { margin: 14px 0 6px; font-size: 13px; }
+.missing-text { color: #b42318; font-weight: 600; }
+</style>
